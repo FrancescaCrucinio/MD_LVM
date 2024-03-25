@@ -25,6 +25,7 @@ def ll_toy_lvm(theta, x, data):
     log_p = -0.5*np.sum((x - theta)**2, axis = 1)
     log_p = log_p - 0.5*np.sum((x-data.T)**2, axis = 1)
     return log_p
+## MD
 # accept/reject step
 def rwm_accept_toy_lvm(v, prop, theta_seq, gamma, data):
     n = theta_seq.size
@@ -35,13 +36,7 @@ def rwm_accept_toy_lvm(v, prop, theta_seq, gamma, data):
     output = ssp.view_2d_array(v)
     output[accepted, :] = prop[accepted, :]
     return output
-def rwm_accept_toy_lvm_fast(v, prop, theta_current, gamma, data, n):
-    log_acceptance = 0.5*(1-gamma)**n*np.sum(v**2 - prop**2, axis = 1)+(1-(1-gamma)**n)*(ll_toy_lvm(theta_current, prop, data) - ll_toy_lvm(theta_current, v, data))
-    accepted = np.log(np.random.uniform(size = v.shape[0])) <= log_acceptance
-    output = ssp.view_2d_array(v)
-    output[accepted, :] = prop[accepted, :]
-    return output
-# MD
+
 def md_toy_lvm(y, gamma, Niter, N, th0, X0):
     D = X0.shape[1]
     x = np.zeros((Niter, N, D))
@@ -65,7 +60,14 @@ def md_toy_lvm(y, gamma, Niter, N, th0, X0):
         logW = gamma*logW
         W = rs.exp_and_normalise(logW)
     return theta, x, W
-# SMC
+## SMC
+def rwm_accept_toy_lvm_fast(v, prop, theta_current, gamma, data, n):
+    log_acceptance = 0.5*(1-gamma)**n*np.sum(v**2 - prop**2, axis = 1)+(1-(1-gamma)**n)*(ll_toy_lvm(theta_current, prop, data) - ll_toy_lvm(theta_current, v, data))
+    accepted = np.log(np.random.uniform(size = v.shape[0])) <= log_acceptance
+    output = ssp.view_2d_array(v)
+    output[accepted, :] = prop[accepted, :]
+    return output
+
 def md_toy_lvm_fast(y, gamma, Niter, N, th0, X0):
     D = X0.shape[1]
     x = np.zeros((Niter, N, D))
@@ -92,25 +94,25 @@ def md_toy_lvm_fast(y, gamma, Niter, N, th0, X0):
 ### Bayesian logistic regression
 # log-likelihood
 def ll_bayesian_lr(th, x, l, f, sigma):
-    s = 1/(1+np.exp(- np.matmul(f, x)))
-    return np.matmul(l, np.log(s))+np.matmul(1-l, np.log(1-s)) - 0.5*np.sum(((x.T-th).T)**2, axis = 0)/sigma**2
+    s = 1/(1+np.exp(- np.matmul(f, x.T)))
+    return np.matmul(l, np.log(s))+np.matmul(1-l, np.log(1-s)) - 0.5*np.sum(((x-th).T)**2, axis = 0)/sigma**2
 # accept/reject step
 def rwm_accept_bayesian_lr_fast(v, prop, theta_current, gamma, data, f, sigma, n):
-    log_acceptance = 0.5*(1-gamma)**n*np.sum(v**2 - prop**2, axis = 0)+(1-(1-gamma)**n)*(ll_bayesian_lr(theta_current, prop, data, f, sigma) - ll_bayesian_lr(theta_current, v, data, f, sigma))
-    accepted = np.log(np.random.uniform(size = v.shape[1])) <= log_acceptance
+    log_acceptance = 0.5*(1-gamma)**n*np.sum(v**2 - prop**2, axis = 1)+(1-(1-gamma)**n)*(ll_bayesian_lr(theta_current, prop, data, f, sigma) - ll_bayesian_lr(theta_current, v, data, f, sigma))
+    accepted = np.log(np.random.uniform(size = v.shape[0])) <= log_acceptance
     output = ssp.view_2d_array(v)
-    output[:, accepted] = prop[:, accepted]
+    output[accepted, :] = prop[accepted, :]
     return output
 # SMC
 def md_toy_bayesian_lr_fast(y, gamma, Niter, N, th0, X0, f, sigma):
     D = X0.shape[1]
-    x = np.zeros((Niter, D, N))
-    theta = np.zeros(Niter, D)
+    x = np.zeros((Niter, N, D))
+    theta = np.zeros((Niter, D))
     theta[0, :] = th0
     x[0, :, :] = X0
     W = np.ones(N)/N
     for n in range(1, Niter):
-        theta[n, :] = theta[n-1, :] + gamma*(np.sum(x[n-1, :, :]*W, axis = 1)-theta[n-1, :])/sigma**2
+        theta[n, :] = theta[n-1, :] + gamma*(np.sum(x[n-1, :, :].T*W, axis = 1)-theta[n-1, :])/sigma**2
         if (n > 1):
             # resample
             ancestors = rs.resampling('stratified', W)
@@ -119,7 +121,9 @@ def md_toy_bayesian_lr_fast(y, gamma, Niter, N, th0, X0, f, sigma):
         prop = rwm_proposal(x[n-1, :, :], W)
         x[n, :, :] = rwm_accept_bayesian_lr_fast(x[n-1, :, :], prop, theta[n-1, :], gamma, y, f, sigma, n)
         # reweight
-        logW = (1-(1-gamma)**n)*ll_bayesian_lr(theta[n-1, :], x[n, :, :], y, f, sigma) - (1-(1-gamma)**(n-1))*ll_bayesian_lr(theta[n-2, :], x[n, :, :], y, f, sigma) + 0.5*gamma*(1-gamma)**(n-1)*np.sum(x[n, :, :]**2, axis = 0)
+        logW = (1-(1-gamma)**n)*ll_bayesian_lr(theta[n-1, :], x[n, :, :], y, f, sigma) + 0.5*gamma*(1-gamma)**(n-1)*np.sum(x[n, :, :]**2, axis = 1)
+        if(n>1):
+            logW = logW - (1-(1-gamma)**(n-1))*ll_bayesian_lr(theta[n-2, :], x[n, :, :], y, f, sigma)
         W = rs.exp_and_normalise(logW)
     return theta, x, W
 
