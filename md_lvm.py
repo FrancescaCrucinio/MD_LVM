@@ -53,7 +53,7 @@ def md_toy_lvm(y, gamma, Niter, N, th0, X0):
             x[n-1, :, :] = x[n-1, ancestors, :]
         # MCMC move
         prop = rwm_proposal(x[n-1, :, :], W)
-        x[n, :, :] = rwm_accept_toy_lvm(x[n-1, :, :], prop, theta[:n], gamma, y)
+        x[n, :, :] = rwm_accept_toy_lvm(x[n-1, :, :], prop, theta[:(n-1)], gamma, y)
         # reweight
         logW = ll_toy_lvm(theta[n], x[n, :, :], y) + 0.5*((1-gamma)**(n-1))*np.sum(x[n, :, :]**2, axis = 1)
         for k in range(n-1):
@@ -84,7 +84,7 @@ def md_toy_lvm_fast(y, gamma, Niter, N, th0, X0):
             x[n-1, :, :] = x[n-1, ancestors, :]
         # MCMC move
         prop = rwm_proposal(x[n-1, :, :], W)
-        x[n, :, :] = rwm_accept_toy_lvm_fast(x[n-1, :, :], prop, theta[n-1], gamma, y, n)
+        x[n, :, :] = rwm_accept_toy_lvm_fast(x[n-1, :, :], prop, theta[n-2], gamma, y, n-1)
         # reweight  
         logW = (1-(1-gamma)**n)*ll_toy_lvm(theta[n-1], x[n, :, :], y) + 0.5*gamma*(1-gamma)**(n-1)*np.sum(x[n, :, :]**2, axis = 1)
         if(n>1):
@@ -92,7 +92,7 @@ def md_toy_lvm_fast(y, gamma, Niter, N, th0, X0):
         W = rs.exp_and_normalise(logW)
     return theta, x, W
 
-def md_toy_lvm_fast2(y, gamma, Niter, N, th0, X0):
+def md_toy_lvm_fast_lookahead(y, gamma, Niter, N, th0, X0):
     D = X0.shape[1]
     x = np.zeros((Niter, N, D))
     theta = np.zeros(Niter)
@@ -107,7 +107,7 @@ def md_toy_lvm_fast2(y, gamma, Niter, N, th0, X0):
             x[n-1, :, :] = x[n-1, ancestors, :]
         # MCMC move
         prop = rwm_proposal(x[n-1, :, :], W)
-        x[n, :, :] = rwm_accept_toy_lvm_fast(x[n-1, :, :], prop, theta[n], gamma, y, n)
+        x[n, :, :] = rwm_accept_toy_lvm_fast(x[n-1, :, :], prop, theta[n-1], gamma, y, n)
         # reweight  
         logW = (1-(1-gamma)**n)*ll_toy_lvm(theta[n], x[n, :, :], y) + 0.5*gamma*(1-gamma)**(n-1)*np.sum(x[n, :, :]**2, axis = 1)
         if(n>1):
@@ -143,7 +143,7 @@ def md_toy_bayesian_lr_fast(y, gamma, Niter, N, th0, X0, f, sigma):
             x[n-1, :, :] = x[n-1, ancestors, :]
         # MCMC move
         prop = rwm_proposal(x[n-1, :, :], W)
-        x[n, :, :] = rwm_accept_bayesian_lr_fast(x[n-1, :, :], prop, theta[n-1, :], gamma, y, f, sigma, n)
+        x[n, :, :] = rwm_accept_bayesian_lr_fast(x[n-1, :, :], prop, theta[n-2, :], gamma, y, f, sigma, n-1)
         # reweight
         logW = (1-(1-gamma)**n)*ll_bayesian_lr(theta[n-1, :], x[n, :, :], y, f, sigma) + 0.5*gamma*(1-gamma)**(n-1)*np.sum(x[n, :, :]**2, axis = 1)
         if(n>1):
@@ -151,7 +151,7 @@ def md_toy_bayesian_lr_fast(y, gamma, Niter, N, th0, X0, f, sigma):
         W = rs.exp_and_normalise(logW)
     return theta, x, W
 
-def md_toy_bayesian_lr_fast2(y, gamma, Niter, N, th0, X0, f, sigma):
+def md_toy_bayesian_lr_fast_lookahead(y, gamma, Niter, N, th0, X0, f, sigma):
     D = X0.shape[1]
     x = np.zeros((Niter, N, D))
     theta = np.zeros((Niter, D))
@@ -166,7 +166,7 @@ def md_toy_bayesian_lr_fast2(y, gamma, Niter, N, th0, X0, f, sigma):
             x[n-1, :, :] = x[n-1, ancestors, :]
         # MCMC move
         prop = rwm_proposal(x[n-1, :, :], W)
-        x[n, :, :] = rwm_accept_bayesian_lr_fast(x[n-1, :, :], prop, theta[n, :], gamma, y, f, sigma, n)
+        x[n, :, :] = rwm_accept_bayesian_lr_fast(x[n-1, :, :], prop, theta[n-1, :], gamma, y, f, sigma, n)
         # reweight
         logW = (1-(1-gamma)**n)*ll_bayesian_lr(theta[n, :], x[n, :, :], y, f, sigma) + 0.5*gamma*(1-gamma)**(n-1)*np.sum(x[n, :, :]**2, axis = 1)
         if(n>1):
@@ -174,75 +174,153 @@ def md_toy_bayesian_lr_fast2(y, gamma, Niter, N, th0, X0, f, sigma):
         W = rs.exp_and_normalise(logW)
     return theta, x, W
 
+# ### Independent component analysis
+# # log-likelihood
+# def ll_ica(sigma, A, x, alpha, y):
+#     d = y.shape[0]
+#     mixture = alpha*logistic.pdf(x, scale = 1/2) + (1-alpha)*(x == 0)
+#     prior = np.sum(np.log(mixture), axis = 1)
+#     likelihood = -0.5*d*np.log(2*np.pi*sigma**2)-0.5*np.sum(np.subtract(np.matmul(A, x.T), y)**2, axis = 0)/sigma**2
+#     return prior+likelihood
+# # accept/reject step
+# def rwm_accept_ica_fast(v, prop, sigma_current, A_current, alpha, gamma, data, n):
+#     log_acceptance = 0.5*(1-gamma)**n*np.sum(v**2 - prop**2, axis = 1)+(1-(1-gamma)**n)*(ll_ica(sigma_current, A_current, prop, alpha, data) - ll_ica(sigma_current, A_current, v, alpha, data))
+#     accepted = np.log(np.random.uniform(size = v.shape[0])) <= log_acceptance
+#     output = ssp.view_2d_array(v)
+#     output[accepted, :] = prop[accepted, :]
+#     return output
+# # gradients
+# def ica_gradient_sigma(A, sigma, Y, x):
+#     d, m = Y.shape
+#     log_gradient = np.sum((Y - np.matmul(A, x.T))**2, axis = 0)/sigma**3 - d/sigma
+#     return log_gradient
 
+# def ica_gradient_A(A, sigma, Y, x):
+#     d, m = Y.shape
+#     p = x.shape[1]
+#     gradient = np.zeros((m, d, p))
+#     for i in range(m):
+#         tmp = np.outer(Y[:, i] - np.matmul(A, x.T)[:, i], x[i, :])
+#         gradient[i, :, :] = np.sign(tmp) * np.exp(np.log(np.abs(tmp)) - np.log(sigma**2))
+#     return gradient
 
+# # SMC
+# def md_ica_fast(y, gamma, Niter, N, A0, sigma0, X0, alpha):
+#     d = y.shape[0]
+#     p = X0.shape[1]
+#     x = np.zeros((Niter, N, p))
+    
+#     A = np.zeros((Niter, d, p))
+#     sigma = np.zeros((Niter))
 
+#     A[0,:,:] = A0
+#     sigma[0] = sigma0
 
-### Independent component analysis
+#     x[0, :, :] = X0
+#     W = np.ones(N)/N
+#     for n in range(1, Niter):
+#         sigma[n] = sigma[n-1] + gamma*np.sum(ica_gradient_sigma(A[n-1, :, :], sigma[n-1], y, x[n-1, :, :])*W)
+#         A[n, :, :] = A[n-1, :, :] + gamma*np.sum(ica_gradient_A(A[n-1, :, :], sigma[n-1], y, x[n-1, :, :]).T*W, axis = 2).T
+#         if (n > 1):
+#             # resample
+#             ancestors = rs.resampling('stratified', W)
+#             x[n-1, :, :] = x[n-1, ancestors, :]
+#         # MCMC move
+#         prop = rwm_proposal(x[n-1, :, :], W)
+#         x[n, :, :] = rwm_accept_ica_fast(x[n-1, :, :], prop, sigma[n-2], A[n-2, :, :], alpha, gamma, y, n-1)
+#         # reweight
+#         logW = (1-(1-gamma)**n)*ll_ica(sigma[n-1], A[n-1, :, :], x[n, :, :], alpha, y) + 0.5*gamma*(1-gamma)**(n-1)*np.sum(x[n, :, :]**2, axis = 1)
+#         if(n>1):
+#             logW = logW - (1-(1-gamma)**(n-1))*ll_ica(sigma[n-2], A[n-2, :, :], x[n, :, :], alpha, y) 
+#         W = rs.exp_and_normalise(logW)
+#     return A, sigma, x, W
+
+### Multimodal example
 # log-likelihood
-def ll_ica(sigma, A, x, alpha, y):
-    d = y.shape[0]
-    mixture = alpha*logistic.pdf(x, scale = 1/2) + (1-alpha)*(x == 0)
-    prior = np.sum(np.log(mixture), axis = 1)
-    likelihood = -0.5*d*np.log(2*np.pi*sigma**2)-0.5*np.sum(np.subtract(np.matmul(A, x.T), y)**2, axis = 0)/sigma**2
-    return prior+likelihood
+def ll_multimodal(theta, x, y):
+    return -np.sum(0.475*np.log(x)+0.025*x+0.5*x*(y-theta)**2, axis = 1)
 # accept/reject step
-def rwm_accept_ica_fast(v, prop, sigma_current, A_current, alpha, gamma, data, n):
-    log_acceptance = 0.5*(1-gamma)**n*np.sum(v**2 - prop**2, axis = 1)+(1-(1-gamma)**n)*(ll_ica(sigma_current, A_current, prop, alpha, data) - ll_ica(sigma_current, A_current, v, alpha, data))
+def rwm_accept_multimodal_fast(v, prop, theta_current, gamma, data, n):
+    log_acceptance = 0.5*(1-gamma)**n*np.sum(v**2 - prop**2, axis = 1)+(1-(1-gamma)**n)*(ll_multimodal(theta_current, prop, data) - ll_multimodal(theta_current, v, data))
     accepted = np.log(np.random.uniform(size = v.shape[0])) <= log_acceptance
+    ssp.view_2d_array(v)
     output = ssp.view_2d_array(v)
     output[accepted, :] = prop[accepted, :]
     return output
-# gradients
-def ica_gradient_sigma(A, sigma, Y, x):
-    d, m = Y.shape
-    log_gradient = np.sum((Y - np.matmul(A, x.T))**2, axis = 0)/sigma**3 - d/sigma
-    return log_gradient
-
-def ica_gradient_A(A, sigma, Y, x):
-    d, m = Y.shape
-    p = x.shape[1]
-    gradient = np.zeros((m, d, p))
-    for i in range(m):
-        tmp = np.outer(Y[:, i] - np.matmul(A, x.T)[:, i], x[i, :])
-        gradient[i, :, :] = np.sign(tmp) * np.exp(np.log(np.abs(tmp)) - np.log(sigma**2))
-    return gradient
-
 # SMC
-def md_ica_fast(y, gamma, Niter, N, A0, sigma0, X0, alpha):
-    d = y.shape[0]
-    p = X0.shape[1]
-    x = np.zeros((Niter, N, p))
-    
-    A = np.zeros((Niter, d, p))
-    sigma = np.zeros((Niter))
-
-    A[0,:,:] = A0
-    sigma[0] = sigma0
-
+def md_multimodal_fast(y, gamma, Niter, N, th0, X0):
+    ndata = y.size
+    x = np.zeros((Niter, N, ndata))
+    theta = np.zeros(Niter)
+    theta[0] = th0
     x[0, :, :] = X0
     W = np.ones(N)/N
     for n in range(1, Niter):
-        sigma[n] = sigma[n-1] + gamma*np.sum(ica_gradient_sigma(A[n-1, :, :], sigma[n-1], y, x[n-1, :, :])*W)
-        A[n, :, :] = A[n-1, :, :] + gamma*np.sum(ica_gradient_A(A[n-1, :, :], sigma[n-1], y, x[n-1, :, :]).T*W, axis = 2).T
+        theta[n] = theta[n-1] + gamma*np.sum(np.sum(x[n-1, :, :]*(y-theta[n-1]), axis = 1)*W)
         if (n > 1):
             # resample
             ancestors = rs.resampling('stratified', W)
             x[n-1, :, :] = x[n-1, ancestors, :]
         # MCMC move
         prop = rwm_proposal(x[n-1, :, :], W)
-        x[n, :, :] = rwm_accept_ica_fast(x[n-1, :, :], prop, sigma[n-1], A[n-1, :, :], alpha, gamma, y, n)
-        # reweight
-        logW = (1-(1-gamma)**n)*ll_ica(sigma[n-1], A[n-1, :, :], x[n, :, :], alpha, y) + 0.5*gamma*(1-gamma)**(n-1)*np.sum(x[n, :, :]**2, axis = 1)
+        x[n, :] = rwm_accept_multimodal_fast(x[n-1, :, :], prop, theta[n-2], gamma, y, n-1)
+        # reweight  
+        logW = (1-(1-gamma)**n)*ll_multimodal(theta[n-1], x[n, :, :], y) + 0.5*gamma*(1-gamma)**(n-1)*np.sum(x[n, :, :]**2, axis = 1)
         if(n>1):
-            logW = logW - (1-(1-gamma)**(n-1))*ll_ica(sigma[n-2], A[n-2, :, :], x[n, :, :], alpha, y) 
+            logW = logW - (1-(1-gamma)**(n-1))*ll_multimodal(theta[n-2], x[n, :, :], y) 
         W = rs.exp_and_normalise(logW)
-    return A, sigma, x, W
+    return theta, x, W
 
 
-
-
-
+### Gaussian Mixture
+# log-likelihood
+def ll_gmm_alpha(theta, x, y, alpha):
+    N = x.size
+#     ll = np.zeros(N)
+    ll = -(y-theta*x)**2/2-0.5*np.log(2*np.pi) +np.log((x==-1)+alpha*x)
+#     for i in range(N):
+#         if(x[i] == 1):
+#             ll[i] = -(y[i]-theta)**2/2 + np.log(alpha)
+#         else:
+#             ll[i] = -(y[i]+theta)**2/2 + np.log(1-alpha)
+#     return ll-0.5*np.log(2*np.pi)
+    return ll
+        
+# discrete proposal
+def component_proposal_alpha(v, alpha):
+    N = v.size
+    arr_prop = 2*np.random.binomial(1, alpha, N)-1
+    return arr_prop
+# accept/reject step
+def accept_gmm_fast(v, prop, theta_current, gamma, data, n, alpha):
+    log_acceptance = (1-(1-gamma)**n)*(ll_gmm_alpha(theta_current, prop, data, alpha) - ll_gmm_alpha(theta_current, v, data, alpha))
+    accepted = np.log(np.random.uniform(size = v.shape[0])) <= log_acceptance
+    output = v.copy()
+    output[accepted] = prop[accepted]
+    return output
+# SMC
+def md_gmm_fast(y, gamma, Niter, N, th0, X0, alpha):
+    ndata = y.size
+    x = np.zeros((Niter, N))
+    theta = np.zeros(Niter)
+    theta[0] = th0
+    x[0, :] = X0
+    W = np.ones(N)/N
+    for n in range(1, Niter):
+        theta[n] = theta[n-1] + gamma*np.sum((y - theta[n-1]*x[n-1, :])*x[n-1, :]*W)
+        if (n > 1):
+            # resample
+            ancestors = rs.resampling('stratified', W)
+            x[n-1, :] = x[n-1, ancestors]
+        # MCMC move
+        prop = component_proposal_alpha(x[n-1,:], alpha)
+        x[n, :] = accept_gmm_fast(x[n-1,:], prop, theta[n-2], gamma, y, n-1, alpha)
+        # reweight  
+        logW = (1-(1-gamma)**n)*ll_gmm_alpha(theta[n-1], x[n, :], y, alpha)+ np.log(0.5)*gamma*((1-gamma)**(n-1))
+        if(n>1):
+            logW = logW - (1-(1-gamma)**(n-1))*ll_gmm_alpha(theta[n-2], x[n, :], y, alpha) 
+        W = rs.exp_and_normalise(logW)
+    return theta, x, W
 
 
 

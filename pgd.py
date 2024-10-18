@@ -79,3 +79,39 @@ def grad_x_blr(th, x, l, f, sigma):
     """Returns x-gradient of log density vectorized over particles."""
     s = 1/(1+np.exp(- np.matmul(f, x)))
     return np.matmul((l-s).transpose(), f).transpose() - (x-th)/sigma**2
+
+### Multimodal example
+def pgd_multimodal(y, h, K, N, th0, X):
+    """Particle Gradient Ascent Algorithm. Returns parameter estimates."""
+    D = y.size  # Extract dimension of latent variables.
+    th = np.zeros(K)
+    th[0] = th0
+    for k in range(K-1):
+        # Update parameter estimate:
+        th[k+1] = th[k] + h*ave_grad_th_multimodal(th[k], X, y)
+        # Update particle cloud:
+        X = (X + h*grad_x_multimodal(th[k], X, y)
+               + np.sqrt(2*h)*np.random.normal(0, 1, (N, D)))
+    return th, X
+
+def ipla_multimodal(y, h, K, N, th0, X):
+    """Particle Gradient Ascent Algorithm. Returns parameter estimates."""
+    D = y.size  # Extract dimension of latent variables.
+    th = np.zeros(K)
+    th[0] = th0
+    for k in range(K-1):
+        # Update parameter estimate:
+        th[k+1] = th[k] + h*ave_grad_th_multimodal(th[k], X, y)+ np.sqrt(2*h/N)*np.random.normal(0, 1, size = 1)
+        # Update particle cloud:
+        X = (X + h*grad_x_multimodal(th[k], X, y)
+               + np.sqrt(2*h)*np.random.normal(0, 1, (N, D)))
+    return th, X
+
+def ave_grad_th_multimodal(th, x, y):
+    """Returns theta-gradient of log density averaged over particle cloud."""
+    grad_theta = np.mean(np.sum(x*(y-th), axis = 1))
+    return grad_theta
+def grad_x_multimodal(th, x, y):
+    """Returns x-gradient of log density vectorized over particles."""
+    grad = 0.475/x+0.025+0.5*(y-th)**2
+    return grad
