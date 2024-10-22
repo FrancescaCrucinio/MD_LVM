@@ -174,67 +174,6 @@ def md_toy_bayesian_lr_fast_lookahead(y, gamma, Niter, N, th0, X0, f, sigma):
         W = rs.exp_and_normalise(logW)
     return theta, x, W
 
-# ### Independent component analysis
-# # log-likelihood
-# def ll_ica(sigma, A, x, alpha, y):
-#     d = y.shape[0]
-#     mixture = alpha*logistic.pdf(x, scale = 1/2) + (1-alpha)*(x == 0)
-#     prior = np.sum(np.log(mixture), axis = 1)
-#     likelihood = -0.5*d*np.log(2*np.pi*sigma**2)-0.5*np.sum(np.subtract(np.matmul(A, x.T), y)**2, axis = 0)/sigma**2
-#     return prior+likelihood
-# # accept/reject step
-# def rwm_accept_ica_fast(v, prop, sigma_current, A_current, alpha, gamma, data, n):
-#     log_acceptance = 0.5*(1-gamma)**n*np.sum(v**2 - prop**2, axis = 1)+(1-(1-gamma)**n)*(ll_ica(sigma_current, A_current, prop, alpha, data) - ll_ica(sigma_current, A_current, v, alpha, data))
-#     accepted = np.log(np.random.uniform(size = v.shape[0])) <= log_acceptance
-#     output = ssp.view_2d_array(v)
-#     output[accepted, :] = prop[accepted, :]
-#     return output
-# # gradients
-# def ica_gradient_sigma(A, sigma, Y, x):
-#     d, m = Y.shape
-#     log_gradient = np.sum((Y - np.matmul(A, x.T))**2, axis = 0)/sigma**3 - d/sigma
-#     return log_gradient
-
-# def ica_gradient_A(A, sigma, Y, x):
-#     d, m = Y.shape
-#     p = x.shape[1]
-#     gradient = np.zeros((m, d, p))
-#     for i in range(m):
-#         tmp = np.outer(Y[:, i] - np.matmul(A, x.T)[:, i], x[i, :])
-#         gradient[i, :, :] = np.sign(tmp) * np.exp(np.log(np.abs(tmp)) - np.log(sigma**2))
-#     return gradient
-
-# # SMC
-# def md_ica_fast(y, gamma, Niter, N, A0, sigma0, X0, alpha):
-#     d = y.shape[0]
-#     p = X0.shape[1]
-#     x = np.zeros((Niter, N, p))
-    
-#     A = np.zeros((Niter, d, p))
-#     sigma = np.zeros((Niter))
-
-#     A[0,:,:] = A0
-#     sigma[0] = sigma0
-
-#     x[0, :, :] = X0
-#     W = np.ones(N)/N
-#     for n in range(1, Niter):
-#         sigma[n] = sigma[n-1] + gamma*np.sum(ica_gradient_sigma(A[n-1, :, :], sigma[n-1], y, x[n-1, :, :])*W)
-#         A[n, :, :] = A[n-1, :, :] + gamma*np.sum(ica_gradient_A(A[n-1, :, :], sigma[n-1], y, x[n-1, :, :]).T*W, axis = 2).T
-#         if (n > 1):
-#             # resample
-#             ancestors = rs.resampling('stratified', W)
-#             x[n-1, :, :] = x[n-1, ancestors, :]
-#         # MCMC move
-#         prop = rwm_proposal(x[n-1, :, :], W)
-#         x[n, :, :] = rwm_accept_ica_fast(x[n-1, :, :], prop, sigma[n-2], A[n-2, :, :], alpha, gamma, y, n-1)
-#         # reweight
-#         logW = (1-(1-gamma)**n)*ll_ica(sigma[n-1], A[n-1, :, :], x[n, :, :], alpha, y) + 0.5*gamma*(1-gamma)**(n-1)*np.sum(x[n, :, :]**2, axis = 1)
-#         if(n>1):
-#             logW = logW - (1-(1-gamma)**(n-1))*ll_ica(sigma[n-2], A[n-2, :, :], x[n, :, :], alpha, y) 
-#         W = rs.exp_and_normalise(logW)
-#     return A, sigma, x, W
-
 ### Multimodal example
 # log-likelihood
 def ll_multimodal(theta, x, y):
@@ -322,18 +261,67 @@ def md_gmm_fast(y, gamma, Niter, N, th0, X0, alpha):
         W = rs.exp_and_normalise(logW)
     return theta, x, W
 
+# ### Independent component analysis
+# log-likelihood
+def ll_ica(sigma, A, x, alpha, y):
+    d = y.shape[0]
+    N = y.shape[1]
+    loglikelihood = np.zeros(N)
+    for i in range(N):
+        mixture = alpha*logistic.pdf(x[i,:], scale = 1/2) + (1-alpha)*(x[i,:] == 0)
+        prior = np.sum(np.log(mixture))
+        loglikelihood[i] = -0.5*d*np.log(2*np.pi*sigma**2)-0.5*np.sum((y[:,i] - np.matmul(A, x[i,:]))**2, axis = 0)/sigma**2 + prior
+    return loglikelihood
+# accept/reject step
+def rwm_accept_ica_fast(v, prop, sigma_current, A_current, alpha, gamma, data, n):
+    log_acceptance = 0.5*(1-gamma)**n*np.sum(v**2 - prop**2, axis = 1)+(1-(1-gamma)**n)*(ll_ica(sigma_current, A_current, prop, alpha, data) - ll_ica(sigma_current, A_current, v, alpha, data))
+    accepted = np.log(np.random.uniform(size = v.shape[0])) <= log_acceptance
+    output = ssp.view_2d_array(v)
+    output[accepted, :] = prop[accepted, :]
+    return output
+
+# SMC
+def md_ica_fast(y, gamma, Niter, N, A0, sigma0, X0, alpha):
+    d = y.shape[0]
+    p = X0.shape[1]
+    x = np.zeros((Niter, N, p))
+    
+    A = np.zeros((Niter, d, p))
+    sigma = np.zeros((Niter))
+
+    A[0,:,:] = A0
+    sigma[0] = sigma0
+
+    x[0, :, :] = X0
+    W = np.ones(N)/N
+    for n in range(1, Niter):
+        sigma[n] = sigma[n-1] + gamma*np.sum(ica_gradient_sigma(A[n-1, :, :], sigma[n-1], y, x[n-1, :, :])*W)
+        A[n, :, :] = A[n-1, :, :] + gamma*np.sum(ica_gradient_A(A[n-1, :, :], sigma[n-1], y, x[n-1, :, :]).T*W, axis = 2).T
+        if (n > 1):
+            # resample
+            ancestors = rs.resampling('stratified', W)
+            x[n-1, :, :] = x[n-1, ancestors, :]
+        # MCMC move
+        prop = rwm_proposal(x[n-1, :, :], W)
+        x[n, :, :] = rwm_accept_ica_fast(x[n-1, :, :], prop, sigma[n-2], A[n-2, :, :], alpha, gamma, y, n-1)
+        # reweight
+        logW = (1-(1-gamma)**n)*ll_ica(sigma[n-1], A[n-1, :, :], x[n, :, :], alpha, y) + 0.5*gamma*(1-gamma)**(n-1)*np.sum(x[n, :, :]**2, axis = 1)
+        if(n>1):
+            logW = logW - (1-(1-gamma)**(n-1))*ll_ica(sigma[n-2], A[n-2, :, :], x[n, :, :], alpha, y) 
+        W = rs.exp_and_normalise(logW)
+    return A, sigma, x, W
 
 
 
-# # def rwm_accept_toy_lvm_varying_gamma(v, prop, theta_seq, gamma_seq, data):
-# #     n = theta_seq.size
-# #     log_acceptance = 0.5*np.prod(1-gamma_seq)*np.sum(v**2 - prop**2, axis = 1)
-# #     for k in range(n):
-# #         log_acceptance = log_acceptance + gamma_seq[k]*np.prod(1-gamma_seq[(k+2):])*(ll_toy_lvm(theta_seq[k], prop, data) - ll_toy_lvm(theta_seq[k], v, data))
-# #     accepted = np.log(np.random.uniform(size = v.shape[0])) <= log_acceptance
-# #     output = ssp.view_2d_array(v)
-# #     output[accepted, :] = prop[accepted, :]
-# #     return output
+# def rwm_accept_toy_lvm_varying_gamma(v, prop, theta_seq, gamma_seq, data):
+#     n = theta_seq.size
+#     log_acceptance = 0.5*np.prod(1-gamma_seq)*np.sum(v**2 - prop**2, axis = 1)
+#     for k in range(n):
+#         log_acceptance = log_acceptance + gamma_seq[k]*np.prod(1-gamma_seq[(k+2):])*(ll_toy_lvm(theta_seq[k], prop, data) - ll_toy_lvm(theta_seq[k], v, data))
+#     accepted = np.log(np.random.uniform(size = v.shape[0])) <= log_acceptance
+#     output = ssp.view_2d_array(v)
+#     output[accepted, :] = prop[accepted, :]
+#     return output
 
 
 
