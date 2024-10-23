@@ -3,7 +3,6 @@ from scipy import linalg, stats, optimize
 from scipy.stats import logistic
 
 # modules from particles
-import particles  # core module
 from particles import smc_samplers as ssp
 from particles import resampling as rs
 
