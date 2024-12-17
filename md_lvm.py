@@ -7,6 +7,7 @@ from sklearn.cluster import KMeans
 from particles import smc_samplers as ssp
 from particles import resampling as rs
 
+from saem import ll_sbm, sbm_saem_sufficient_stat
 ### General functions
 
 def rwm_proposal(v, W):
@@ -233,67 +234,95 @@ def md_gmm_fast(y, gamma, Niter, N, th0, X0, alpha):
 
 
 ### Stochastic Block Model
-# log-likelihood
-def ll_sbm(theta, x, y):
-    N = x.size
-    prior = np.zeros(N)
-    ll = np.zeros((N))
-    for i in range(N):
-        if(x[i] == 1):
-            prior[i] = np.log(theta[0])
-            for j in range(N):
-                if(j != i):
-                    if(x[j] == 1):
-                        ll[i] += y[i,j]*np.log(theta[1]) + (1-y[i,j])*np.log(1-theta[1])
-                        ll[i] += y[j,i]*np.log(theta[1]) + (1-y[j,i])*np.log(1-theta[1])
-                    if(x[j] == 2):
-                        ll[i] += y[i,j]*np.log(theta[2]) + (1-y[i,j])*np.log(1-theta[2])
-                        ll[i] += y[j,i]*np.log(theta[2]) + (1-y[j,i])*np.log(1-theta[2])
-        if(x[i] == 2):
-            prior[i] = np.log(1-theta[0])
-            for j in range(N):
-                if(j != i):
-                    if(x[j] == 1):
-                        ll[i] += y[i,j]*np.log(theta[2]) + (1-y[i,j])*np.log(1-theta[2])
-                        ll[i] += y[j,i]*np.log(theta[2]) + (1-y[j,i])*np.log(1-theta[2])
-                    if(x[j] == 2):
-                        ll[i] += y[i,j]*np.log(theta[3]) + (1-y[i,j])*np.log(1-theta[3])
-                        ll[i] += y[j,i]*np.log(theta[3]) + (1-y[j,i])*np.log(1-theta[3])
-    return ll+prior
-# discrete proposal
-def component_proposal_sbm(v):
-    N = v.size
-    arr_prop = np.random.binomial(1, 0.5, N)+1
-    return arr_prop
+# # log-likelihood
+# def ll_sbm(theta, x, y):
+#     N = x.size
+#     prior = np.zeros(N)
+#     ll = np.zeros((N))
+#     for i in range(N):
+#         if(x[i] == 1):
+#             prior[i] = np.log(theta[0])
+#             for j in range(N):
+#                 if(j != i):
+#                     if(x[j] == 1):
+#                         ll[i] += y[i,j]*np.log(theta[1]) + (1-y[i,j])*np.log(1-theta[1])
+#                         ll[i] += y[j,i]*np.log(theta[1]) + (1-y[j,i])*np.log(1-theta[1])
+#                     if(x[j] == 2):
+#                         ll[i] += y[i,j]*np.log(theta[2]) + (1-y[i,j])*np.log(1-theta[2])
+#                         ll[i] += y[j,i]*np.log(theta[2]) + (1-y[j,i])*np.log(1-theta[2])
+#         if(x[i] == 2):
+#             prior[i] = np.log(1-theta[0])
+#             for j in range(N):
+#                 if(j != i):
+#                     if(x[j] == 1):
+#                         ll[i] += y[i,j]*np.log(theta[2]) + (1-y[i,j])*np.log(1-theta[2])
+#                         ll[i] += y[j,i]*np.log(theta[2]) + (1-y[j,i])*np.log(1-theta[2])
+#                     if(x[j] == 2):
+#                         ll[i] += y[i,j]*np.log(theta[3]) + (1-y[i,j])*np.log(1-theta[3])
+#                         ll[i] += y[j,i]*np.log(theta[3]) + (1-y[j,i])*np.log(1-theta[3])
+#     return ll+prior
+# def ll_sbm(theta, x, y, i):
+#     N = x.size
+#     prior = np.zeros(N)
+#     ll = np.zeros(N)
+#     for i in range(N):
+#         for j in range(N):
+#             if(x[i] == 0):
+#                 prior[i] = np.log(theta[0])
+#                 if(j != i):
+#                     if(x[j] == 0):
+#                         ll[i] += y[i,j]*np.log(theta[1]) + (1-y[i,j])*np.log(1-theta[1])
+#                         ll[i] += y[j,i]*np.log(theta[1]) + (1-y[j,i])*np.log(1-theta[1])
+#                     if(x[j] == 1):
+#                         ll[i] += y[i,j]*np.log(theta[3]) + (1-y[i,j])*np.log(1-theta[3])
+#                         ll[i] += y[j,i]*np.log(theta[2]) + (1-y[j,i])*np.log(1-theta[2])
+#             if(x[i] == 1):
+#                 prior[i] = np.log(1-theta[0])
+#                 if(j != i):
+#                     if(x[j] == 0):
+#                         ll[i] += y[i,j]*np.log(theta[2]) + (1-y[i,j])*np.log(1-theta[2])
+#                         ll += y[j,i]*np.log(theta[3]) + (1-y[j,i])*np.log(1-theta[3])
+#                     if(x[j] == 1):
+#                         ll[i] += y[i,j]*np.log(theta[4]) + (1-y[i,j])*np.log(1-theta[4])
+#                         ll[i] += y[j,i]*np.log(theta[4]) + (1-y[j,i])*np.log(1-theta[4])
+#     return ll+prior
 # accept/reject step
-def accept_sbm_fast(v, prop, theta_current, gamma, data, n):
-    log_acceptance = (1-(1-gamma)**n)*(ll_sbm(theta_current, prop, data) - ll_sbm(theta_current, v, data))
-    accepted = np.log(np.random.uniform(size = v.shape[0])) <= log_acceptance
+def sbm_md_proposal(data, v, theta_current, gamma, n):
+    N = v.size
     output = v.copy()
-    output[accepted] = prop[accepted]
+    for i in range(N):
+        prop = np.random.binomial(1, 0.5, 1)
+        if(prop != v[i]):
+            prop_full = v.copy()
+            prop_full[i] = prop
+            log_acceptance = (1-(1-gamma)**n)*(ll_sbm(theta_current, prop_full, data, i) - ll_sbm(theta_current, v, data, i))
+            if (np.log(np.random.uniform(size = 1)) <= log_acceptance):
+                output[i] = prop
     return output
+# def accept_sbm_fast(v, prop, theta_current, gamma, data, n):
+#     log_acceptance = (1-(1-gamma)**n)*(ll_sbm(theta_current, prop, data) - ll_sbm(theta_current, v, data))
+#     accepted = np.log(np.random.uniform(size = v.shape[0])) <= log_acceptance
+#     output = v.copy()
+#     output[accepted] = prop[accepted]
+#     return output
 def sbm_gradient_p(x, p):
-    return (x == 1)/p - (x == 2)/(1-p)   
+    return (x == 0)/p - (x == 1)/(1-p)   
 def sbm_gradient_nu(x, W, theta, y):
     N = x.size
     gradient = np.zeros(theta.size-1)
     for i in range(N):
         for j in range(N):
             if(j != i):
-                if(x[i] == 1):
-                    if(x[j] == 1):
+                if(x[i] == 0):
+                    if(x[j] == 0):
                         gradient[0] += (y[i,j]/theta[1] - (1-y[i,j])/(1-theta[1]))*W[i]*W[j]
-                        gradient[0] += (y[j,i]/theta[1] - (1-y[j,i])/(1-theta[1]))*W[i]*W[j]
-                    if(x[j] == 2):
-                        gradient[1] += (y[i,j]/theta[2] - (1-y[i,j])/(1-theta[2]))*W[i]*W[j]
-                        gradient[1] += (y[j,i]/theta[2] - (1-y[j,i])/(1-theta[2]))*W[i]*W[j]
-                if(x[i] == 2):
                     if(x[j] == 1):
-                        gradient[1] += (y[i,j]/theta[2] - (1-y[i,j])/(1-theta[2]))*W[i]*W[j]
-                        gradient[1] += (y[j,i]/theta[2] - (1-y[j,i])/(1-theta[2]))*W[i]*W[j]
-                    if(x[j] == 2):
-                        gradient[2] += (y[i,j]/theta[3] - (1-y[i,j])/(1-theta[3]))*W[i]*W[j]
-                        gradient[2] += (y[j,i]/theta[3] - (1-y[j,i])/(1-theta[3]))*W[i]*W[j]
+                        gradient[2] += (y[i,j]/theta[2] - (1-y[i,j])/(1-theta[2]))*W[i]*W[j]
+                if(x[i] == 1):
+                    if(x[j] == 0):
+                        gradient[1] += (y[i,j]/theta[3] - (1-y[i,j])/(1-theta[3]))*W[i]*W[j]
+                    if(x[j] == 1):
+                        gradient[3] += (y[i,j]/theta[4] - (1-y[i,j])/(1-theta[4]))*W[i]*W[j]
     return gradient
 # SMC
 def md_sbm_fast(y, gamma, Niter, N, th0, X0):
@@ -302,22 +331,24 @@ def md_sbm_fast(y, gamma, Niter, N, th0, X0):
     theta[0, :] = th0
     x[0, :] = X0
     W = np.ones(N)/N
-    kmeans = KMeans(n_clusters=2)
+    probs = np.array([[0.25, 0.1], [0.1, 0.2]])
     for n in range(1, Niter):
+        s1, s2, s3 = sbm_saem_sufficient_stat(x[n-1,:].astype(int), y)
         theta[n, 0] = theta[n-1,0]+gamma*np.sum(sbm_gradient_p(x[n-1,:].astype(int), theta[n-1, 0])*W)
-        theta[n, 1:] = theta[n-1,1:]+gamma*sbm_gradient_nu(x[n-1,:].astype(int), W, theta[n-1, :], y)
+#         theta[n, 1:] = theta[n-1,1:]+gamma*sbm_gradient_nu(x[n-1,:].astype(int), W, theta[n-1, :], y)
+        theta[n, 1:] = probs.flatten()
         if (n > 1):
             # resample
             ancestors = rs.resampling('stratified', W)
             x[n-1, :] = x[n-1, ancestors]
         # MCMC move
-        kmeans.fit(y)
-        prop = kmeans.labels_+1
-        x[n, :] = accept_sbm_fast(x[n-1,:].astype(int), prop, theta[n-1, :], gamma, y, n-1)
+        x[n, :] = sbm_md_proposal(y, x[n-1,:].astype(int), theta[n-1, :], gamma, n)
         # reweight  
-        logW = (1-(1-gamma)**n)*ll_sbm(theta[n-1, :], x[n, :].astype(int), y)+ np.log(0.5)*gamma*((1-gamma)**(n-1))
-        if(n>1):
-            logW = logW - (1-(1-gamma)**(n-1))*ll_sbm(theta[n-2, :], x[n, :].astype(int), y) 
+        logW = np.zeros(N)
+        for i in range(N):
+            logW[i] = (1-(1-gamma)**n)*ll_sbm(theta[n-1, :], x[n, :].astype(int), y, i)+ np.log(0.5)*gamma*((1-gamma)**(n-1))
+            if(n>1):
+                logW[i] = logW[i] - (1-(1-gamma)**(n-1))*ll_sbm(theta[n-2, :], x[n, :].astype(int), y, i) 
         W = rs.exp_and_normalise(logW)
     return theta, x, W
 
