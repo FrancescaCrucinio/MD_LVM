@@ -79,6 +79,7 @@ def se_sbm(theta, pi, probs):
     se = np.zeros(5)
     rse = np.zeros(5)
     true_zero = np.argmin((theta[0] - pi)**2)
+    switched = 0
     if (true_zero == 0):
         se[0] = (theta[0] - pi[0])**2
         rse[0] = se[0]/pi[0]**2
@@ -90,4 +91,5 @@ def se_sbm(theta, pi, probs):
         tmp = theta[1:]
         se[1:] = (tmp[::-1]-probs.flatten())**2
         rse[1:] = se[1:]/probs.flatten()**2
-    return se, rse
+        switched = 1
+    return se, rse, switched
