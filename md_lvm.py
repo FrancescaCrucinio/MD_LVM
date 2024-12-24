@@ -334,15 +334,16 @@ def md_sbm_fast(y, gamma, Niter, N, th0, X0):
     probs = np.array([[0.25, 0.1], [0.1, 0.2]])
     for n in range(1, Niter):
 #         s1, s2, s3 = sbm_saem_sufficient_stat(x[n-1,:].astype(int), y)
-        theta[n, 0] = theta[n-1,0]+0.01*gamma*np.sum(sbm_gradient_p(x[n-1,:].astype(int), theta[n-1, 0])*W)
+        theta[n, 0] = theta[n-1,0]+gamma*np.sum(sbm_gradient_p(x[n-1,:].astype(int), theta[n-1, 0])*W)
 #         theta[n,0] = 0.4
         tmp_vector = sbm_gradient_nu(x[n-1,:].astype(int), W, theta[n-1, :], y)
         theta[n, 1] = theta[n-1,1]+gamma*tmp_vector[0]
         theta[n, 4] = theta[n-1,4]+gamma*tmp_vector[3]
-        theta[n, 2] = theta[n-1,2]+gamma*tmp_vector[1]
+#         theta[n, 2] = theta[n-1,2]+gamma*tmp_vector[1]
         theta[n, 3] = theta[n-1,3]+gamma*tmp_vector[2]
 #         theta[n, 1:] = theta[n-1, 1:]+gamma*tmp_vector
-#         theta[n, 3] = probs.flatten()[2]
+        theta[n, 2] = probs.flatten()[1]
+#         print(tmp_vector)
         if (n > 1):
             # resample
             ancestors = rs.resampling('stratified', W)
