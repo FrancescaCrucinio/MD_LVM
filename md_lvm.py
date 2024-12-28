@@ -7,7 +7,7 @@ from sklearn.cluster import KMeans
 from particles import smc_samplers as ssp
 from particles import resampling as rs
 
-from saem import ll_sbm, sbm_saem_sufficient_stat
+from saem import ll_sbm, sbm_saem_sufficient_stat, sbm_saem_mle
 ### General functions
 
 def rwm_proposal(v, W):
@@ -234,58 +234,6 @@ def md_gmm_fast(y, gamma, Niter, N, th0, X0, alpha):
 
 
 ### Stochastic Block Model
-# # log-likelihood
-# def ll_sbm(theta, x, y):
-#     N = x.size
-#     prior = np.zeros(N)
-#     ll = np.zeros((N))
-#     for i in range(N):
-#         if(x[i] == 1):
-#             prior[i] = np.log(theta[0])
-#             for j in range(N):
-#                 if(j != i):
-#                     if(x[j] == 1):
-#                         ll[i] += y[i,j]*np.log(theta[1]) + (1-y[i,j])*np.log(1-theta[1])
-#                         ll[i] += y[j,i]*np.log(theta[1]) + (1-y[j,i])*np.log(1-theta[1])
-#                     if(x[j] == 2):
-#                         ll[i] += y[i,j]*np.log(theta[2]) + (1-y[i,j])*np.log(1-theta[2])
-#                         ll[i] += y[j,i]*np.log(theta[2]) + (1-y[j,i])*np.log(1-theta[2])
-#         if(x[i] == 2):
-#             prior[i] = np.log(1-theta[0])
-#             for j in range(N):
-#                 if(j != i):
-#                     if(x[j] == 1):
-#                         ll[i] += y[i,j]*np.log(theta[2]) + (1-y[i,j])*np.log(1-theta[2])
-#                         ll[i] += y[j,i]*np.log(theta[2]) + (1-y[j,i])*np.log(1-theta[2])
-#                     if(x[j] == 2):
-#                         ll[i] += y[i,j]*np.log(theta[3]) + (1-y[i,j])*np.log(1-theta[3])
-#                         ll[i] += y[j,i]*np.log(theta[3]) + (1-y[j,i])*np.log(1-theta[3])
-#     return ll+prior
-# def ll_sbm(theta, x, y, i):
-#     N = x.size
-#     prior = np.zeros(N)
-#     ll = np.zeros(N)
-#     for i in range(N):
-#         for j in range(N):
-#             if(x[i] == 0):
-#                 prior[i] = np.log(theta[0])
-#                 if(j != i):
-#                     if(x[j] == 0):
-#                         ll[i] += y[i,j]*np.log(theta[1]) + (1-y[i,j])*np.log(1-theta[1])
-#                         ll[i] += y[j,i]*np.log(theta[1]) + (1-y[j,i])*np.log(1-theta[1])
-#                     if(x[j] == 1):
-#                         ll[i] += y[i,j]*np.log(theta[3]) + (1-y[i,j])*np.log(1-theta[3])
-#                         ll[i] += y[j,i]*np.log(theta[2]) + (1-y[j,i])*np.log(1-theta[2])
-#             if(x[i] == 1):
-#                 prior[i] = np.log(1-theta[0])
-#                 if(j != i):
-#                     if(x[j] == 0):
-#                         ll[i] += y[i,j]*np.log(theta[2]) + (1-y[i,j])*np.log(1-theta[2])
-#                         ll += y[j,i]*np.log(theta[3]) + (1-y[j,i])*np.log(1-theta[3])
-#                     if(x[j] == 1):
-#                         ll[i] += y[i,j]*np.log(theta[4]) + (1-y[i,j])*np.log(1-theta[4])
-#                         ll[i] += y[j,i]*np.log(theta[4]) + (1-y[j,i])*np.log(1-theta[4])
-#     return ll+prior
 # accept/reject step
 def sbm_md_proposal(data, v, theta_current, gamma, n):
     N = v.size
@@ -299,12 +247,7 @@ def sbm_md_proposal(data, v, theta_current, gamma, n):
             if (np.log(np.random.uniform(size = 1)) <= log_acceptance):
                 output[i] = prop
     return output
-# def accept_sbm_fast(v, prop, theta_current, gamma, data, n):
-#     log_acceptance = (1-(1-gamma)**n)*(ll_sbm(theta_current, prop, data) - ll_sbm(theta_current, v, data))
-#     accepted = np.log(np.random.uniform(size = v.shape[0])) <= log_acceptance
-#     output = v.copy()
-#     output[accepted] = prop[accepted]
-#     return output
+# gradients
 def sbm_gradient_p(x, p):
     return (x == 0)/p - (x == 1)/(1-p)   
 def sbm_gradient_nu(x, W, theta, y):
@@ -333,17 +276,8 @@ def md_sbm_fast(y, gamma, Niter, N, th0, X0):
     W = np.ones(N)/N
     probs = np.array([[0.25, 0.1], [0.1, 0.2]])
     for n in range(1, Niter):
-#         s1, s2, s3 = sbm_saem_sufficient_stat(x[n-1,:].astype(int), y)
         theta[n, 0] = theta[n-1,0]+gamma*np.sum(sbm_gradient_p(x[n-1,:].astype(int), theta[n-1, 0])*W)
-#         theta[n,0] = 0.4
-        tmp_vector = sbm_gradient_nu(x[n-1,:].astype(int), W, theta[n-1, :], y)
-        theta[n, 1] = theta[n-1,1]+gamma*tmp_vector[0]
-        theta[n, 4] = theta[n-1,4]+gamma*tmp_vector[3]
-#         theta[n, 2] = theta[n-1,2]+gamma*tmp_vector[1]
-        theta[n, 3] = theta[n-1,3]+gamma*tmp_vector[2]
-#         theta[n, 1:] = theta[n-1, 1:]+gamma*tmp_vector
-        theta[n, 2] = probs.flatten()[1]
-#         print(tmp_vector)
+        theta[n, 1:] = theta[n-1, 1:]+gamma*sbm_gradient_nu(x[n-1,:].astype(int), W, theta[n-1, :], y)
         if (n > 1):
             # resample
             ancestors = rs.resampling('stratified', W)
