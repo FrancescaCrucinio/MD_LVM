@@ -7,7 +7,7 @@ from sklearn.cluster import KMeans
 from particles import smc_samplers as ssp
 from particles import resampling as rs
 
-from saem import ll_sbm, sbm_saem_sufficient_stat, sbm_saem_mle
+from saem import ll_sbm, ll_poisson_sbm
 ### General functions
 
 def rwm_proposal(v, W):
@@ -233,7 +233,7 @@ def md_gmm_fast(y, gamma, Niter, N, th0, X0, alpha):
     return theta, x, W
 
 
-### Stochastic Block Model
+### Stochastic Block Model -- Bernoulli
 # accept/reject step
 def sbm_md_proposal(data, v, theta_current, gamma, n):
     N = v.size
@@ -274,7 +274,6 @@ def md_sbm_fast(y, gamma, Niter, N, th0, X0):
     theta[0, :] = th0
     x[0, :] = X0
     W = np.ones(N)/N
-    probs = np.array([[0.25, 0.1], [0.1, 0.2]])
     for n in range(1, Niter):
         theta[n, 0] = theta[n-1,0]+gamma*np.sum(sbm_gradient_p(x[n-1,:].astype(int), theta[n-1, 0])*W)
         theta[n, 1:] = theta[n-1, 1:]+gamma*sbm_gradient_nu(x[n-1,:].astype(int), W, theta[n-1, :], y)
@@ -293,52 +292,59 @@ def md_sbm_fast(y, gamma, Niter, N, th0, X0):
         W = rs.exp_and_normalise(logW)
     return theta, x, W
 
-# # ### Independent component analysis
-# # log-likelihood
-# def ll_ica(sigma, A, x, alpha, y):
-#     d = y.shape[0]
-#     N = y.shape[1]
-#     loglikelihood = np.zeros(N)
-#     for i in range(N):
-#         mixture = alpha*logistic.pdf(x[i,:], scale = 1/2) + (1-alpha)*(x[i,:] == 0)
-#         prior = np.sum(np.log(mixture))
-#         loglikelihood[i] = -0.5*d*np.log(2*np.pi*sigma**2)-0.5*np.sum((y[:,i] - np.matmul(A, x[i,:]))**2, axis = 0)/sigma**2 + prior
-#     return loglikelihood
-# # accept/reject step
-# def rwm_accept_ica_fast(v, prop, sigma_current, A_current, alpha, gamma, data, n):
-#     log_acceptance = 0.5*(1-gamma)**n*np.sum(v**2 - prop**2, axis = 1)+(1-(1-gamma)**n)*(ll_ica(sigma_current, A_current, prop, alpha, data) - ll_ica(sigma_current, A_current, v, alpha, data))
-#     accepted = np.log(np.random.uniform(size = v.shape[0])) <= log_acceptance
-#     output = ssp.view_2d_array(v)
-#     output[accepted, :] = prop[accepted, :]
-#     return output
-
-# # SMC
-# def md_ica_fast(y, gamma, Niter, N, A0, sigma0, X0, alpha):
-#     d = y.shape[0]
-#     p = X0.shape[1]
-#     x = np.zeros((Niter, N, p))
-    
-#     A = np.zeros((Niter, d, p))
-#     sigma = np.zeros((Niter))
-
-#     A[0,:,:] = A0
-#     sigma[0] = sigma0
-
-#     x[0, :, :] = X0
-#     W = np.ones(N)/N
-#     for n in range(1, Niter):
-#         sigma[n] = sigma[n-1] + gamma*np.sum(ica_gradient_sigma(A[n-1, :, :], sigma[n-1], y, x[n-1, :, :])*W)
-#         A[n, :, :] = A[n-1, :, :] + gamma*np.sum(ica_gradient_A(A[n-1, :, :], sigma[n-1], y, x[n-1, :, :]).T*W, axis = 2).T
-#         if (n > 1):
-#             # resample
-#             ancestors = rs.resampling('stratified', W)
-#             x[n-1, :, :] = x[n-1, ancestors, :]
-#         # MCMC move
-#         prop = rwm_proposal(x[n-1, :, :], W)
-#         x[n, :, :] = rwm_accept_ica_fast(x[n-1, :, :], prop, sigma[n-2], A[n-2, :, :], alpha, gamma, y, n-1)
-#         # reweight
-#         logW = (1-(1-gamma)**n)*ll_ica(sigma[n-1], A[n-1, :, :], x[n, :, :], alpha, y) + 0.5*gamma*(1-gamma)**(n-1)*np.sum(x[n, :, :]**2, axis = 1)
-#         if(n>1):
-#             logW = logW - (1-(1-gamma)**(n-1))*ll_ica(sigma[n-2], A[n-2, :, :], x[n, :, :], alpha, y) 
-#         W = rs.exp_and_normalise(logW)
-#     return A, sigma, x, W
+### Stochastic Block Model -- Poisson
+# accept/reject step
+def poisson_sbm_md_proposal(data, v, theta_current, gamma, n):
+    N = v.size
+    output = v.copy()
+    for i in range(N):
+        prop = np.random.binomial(1, 0.5, 1)
+        if(prop != v[i]):
+            prop_full = v.copy()
+            prop_full[i] = prop
+            log_acceptance = (1-(1-gamma)**n)*(ll_poisson_sbm(theta_current, prop_full, data, i) - ll_poisson_sbm(theta_current, v, data, i))
+            if (np.log(np.random.uniform(size = 1)) <= log_acceptance):
+                output[i] = prop
+    return output
+# gradients  
+def poisson_sbm_gradient_nu(x, W, theta, y):
+    N = x.size
+    gradient = np.zeros(theta.size-1)
+    for i in range(N):
+        for j in range(N):
+            if(j != i):
+                if(x[i] == 0):
+                    if(x[j] == 0):
+                        gradient[0] += (y[i,j]/theta[1]-1)*W[i]*W[j]
+                    if(x[j] == 1):
+                        gradient[2] += (y[i,j]/theta[3]-1)*W[i]*W[j]
+                if(x[i] == 1):
+                    if(x[j] == 0):
+                        gradient[1] += (y[i,j]/theta[2]-1)*W[i]*W[j]
+                    if(x[j] == 1):
+                        gradient[3] += (y[i,j]/theta[4]-1)*W[i]*W[j]
+    return gradient
+# SMC
+def md_poisson_sbm_fast(y, gamma, Niter, N, th0, X0):
+    x = np.zeros((Niter, N))
+    theta = np.zeros((Niter, th0.size))
+    theta[0, :] = th0
+    x[0, :] = X0
+    W = np.ones(N)/N
+    for n in range(1, Niter):
+        theta[n, 0] = theta[n-1,0]+gamma*np.sum(sbm_gradient_p(x[n-1,:].astype(int), theta[n-1, 0])*W)
+        theta[n, 1:] = theta[n-1, 1:]+gamma*poisson_sbm_gradient_nu(x[n-1,:].astype(int), W, theta[n-1, :], y)
+        if (n > 1):
+            # resample
+            ancestors = rs.resampling('stratified', W)
+            x[n-1, :] = x[n-1, ancestors]
+        # MCMC move
+        x[n, :] = poisson_sbm_md_proposal(y, x[n-1,:].astype(int), theta[n-1, :], gamma, n)
+        # reweight  
+        logW = np.zeros(N)
+        for i in range(N):
+            logW[i] = (1-(1-gamma)**n)*ll_poisson_sbm(theta[n-1, :], x[n, :].astype(int), y, i)+ np.log(0.5)*gamma*((1-gamma)**(n-1))
+            if(n>1):
+                logW[i] = logW[i] - (1-(1-gamma)**(n-1))*ll_poisson_sbm(theta[n-2, :], x[n, :].astype(int), y, i) 
+        W = rs.exp_and_normalise(logW)
+    return theta, x, W
