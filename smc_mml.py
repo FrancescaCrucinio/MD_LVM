@@ -1,6 +1,9 @@
 import numpy as np
 from scipy import linalg, stats
 from particles import resampling as rs
+from particles import smc_samplers as ssp
+
+from md_lvm import rwm_proposal
 
 def smc_mml_multimodal(N, Niter, data):
     theta = np.zeros((Niter, N))
